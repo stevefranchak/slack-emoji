@@ -12,8 +12,12 @@ use clap::{Clap, crate_authors, crate_version};
 #[derive(Clap)]
 #[clap(version = crate_version!(), author = crate_authors!())]
 struct Opts {
+    /// Filepath of the output archive file (including filename)
     #[clap(name = "OUTPUT ARCHIVE FILE")]
-    archive_file: String
+    archive_file: String,
+    /// Slack workspace subdomain (e.g. if your Slack is at myorg.slack.com, enter "myorg")
+    #[clap(name = "SLACK WORKSPACE")]
+    slack_workspace: String,
 }
 
 static SLACK_TOKEN_ENV_VAR_NAME: &str = "SLACK_TOKEN";
@@ -25,13 +29,25 @@ fn get_slack_token() -> String {
     }
 }
 
+async fn fetch_slack_custom_emojis(token: &str, workspace: &str) -> Result<(), Box <dyn Error>> {
+    let url = format!("https://{}.slack.com/api/emoji.adminList", workspace);
+    let client = reqwest::Client::new();
+    let response: serde_json::Value = client.post(&url)
+        .form(&[("token", token)])
+        .send()
+        .await?
+        .json()
+        .await?;
+    println!("{:#?}", response);
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
 
     let slack_token = get_slack_token();
-    println!("Output archive file: {}", opts.archive_file);
-    println!("Slack token: {}", slack_token);
-    println!("Temp dir: {:?}", env::temp_dir());
+    // println!("Output archive file: {}", opts.archive_file);
+    fetch_slack_custom_emojis(&slack_token, &opts.slack_workspace).await?;
     return Ok(())
 }
