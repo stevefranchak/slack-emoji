@@ -2,7 +2,10 @@ use std::{env, error::Error};
 
 use clap::{Clap, crate_authors, crate_version};
 
+use slack::SlackClient;
+
 mod emoji;
+mod slack;
 
 /// Exports all custom emojis from a Slack workspace.
 /// 
@@ -34,9 +37,7 @@ fn get_slack_token() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
-
-    let slack_token = get_slack_token();
-    // println!("Output archive file: {}", opts.archive_file);
-    emoji::fetch_slack_custom_emojis(&slack_token, &opts.slack_workspace).await?;
+    let slack_client = SlackClient::new(get_slack_token(), &opts.slack_workspace);
+    emoji::fetch_slack_custom_emojis(&slack_client).await?;
     return Ok(())
 }

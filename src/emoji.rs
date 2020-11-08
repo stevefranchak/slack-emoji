@@ -2,8 +2,10 @@ use std::error::Error;
 
 use serde::{Deserialize, Serialize};
 
+use crate::SlackClient;
+
 #[derive(Debug, Serialize, Deserialize)]
-struct Emoji {
+pub struct Emoji {
     name: String,
     url: String,
     #[serde(rename = "user_display_name")]
@@ -18,11 +20,10 @@ struct EmojiResponse {
     emojis: Vec<Emoji>,
 }
 
-pub async fn fetch_slack_custom_emojis(token: &str, workspace: &str) -> Result<(), Box <dyn Error>> {
-    let url = format!("https://{}.slack.com/api/emoji.adminList", workspace);
-    let client = reqwest::Client::new();
-    let response: EmojiResponse = client.post(&url)
-        .form(&[("token", token)])
+pub async fn fetch_slack_custom_emojis(client: &SlackClient) -> Result<(), Box <dyn Error>> {
+    let url = client.generate_url("emoji.adminList");
+    let response: EmojiResponse = client.client.post(&url)
+        .form(&[("token", &client.token)])
         .send()
         .await?
         .json()
