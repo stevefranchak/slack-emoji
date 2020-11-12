@@ -1,6 +1,9 @@
 use std::{env, error::Error};
+use std::rc::Rc;
 
 use clap::{Clap, crate_authors, crate_version};
+use futures::pin_mut;
+use futures::stream::StreamExt;
 
 use slack::SlackClient;
 
@@ -37,7 +40,13 @@ fn get_slack_token() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
-    let slack_client = SlackClient::new(get_slack_token(), &opts.slack_workspace);
-    emoji::fetch_slack_custom_emojis(&slack_client).await?;
+    let slack_client = Rc::new(SlackClient::new(get_slack_token(), &opts.slack_workspace));
+
+    let stream = emoji::fetch_slack_custom_emojis(slack_client);
+    pin_mut!(stream);
+
+    while let Some(emoji) = stream.next().await {
+        println!("{:#?}", emoji);
+    }
     return Ok(())
 }
