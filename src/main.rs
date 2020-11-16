@@ -4,6 +4,8 @@ use std::rc::Rc;
 use clap::{Clap, crate_authors, crate_version};
 use futures::pin_mut;
 use futures::stream::StreamExt;
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
 
 use emoji::EmojiPaginator;
 use slack::SlackClient;
@@ -52,5 +54,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         num_emojis += 1;
     }
     println!("There are {} custom emojis", num_emojis);
+
+    // Generate random directory
+    let mut temp_dir_path = env::temp_dir();
+    temp_dir_path.push("slack-emoji-exporter");
+    fs::remove_dir_all(&temp_dir_path).await?;
+    fs::create_dir(&temp_dir_path).await?;
+
+    let mut metadata_filepath = temp_dir_path.clone();
+    metadata_filepath.push("metadata.csv");
+    let mut metadata_file = fs::File::create(&metadata_filepath).await?;
+    metadata_file.write_all(b"hello, world!\n").await?;
+    metadata_file.flush().await?;
+
+    // fs::remove_dir_all(&temp_dir_path).await?;
+
     return Ok(())
 }
