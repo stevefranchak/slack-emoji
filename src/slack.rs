@@ -6,15 +6,15 @@ pub struct SlackClient {
 }
 
 impl SlackClient {
-    pub fn new(token: String, workspace: &str) -> Self {
+    pub fn new<S: Into<String>, T: AsRef<str>>(token: S, workspace: T) -> Self {
         Self {
             client: reqwest::Client::new(),
-            token,
-            base_url: format!("https://{}.slack.com/api", workspace),
+            token: token.into(),
+            base_url: format!("https://{}.slack.com/api", workspace.as_ref()),
         }
     }
 
-    pub fn generate_url(&self, endpoint: &str) -> String {
-        format!("{}/{}", self.base_url, endpoint)
+    pub fn generate_url<T: AsRef<str>>(&self, endpoint: T) -> String {
+        format!("{}/{}", self.base_url, endpoint.as_ref())
     }
 }

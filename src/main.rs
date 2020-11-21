@@ -4,6 +4,7 @@ use std::rc::Rc;
 use clap::{Clap, crate_authors, crate_version};
 use futures::pin_mut;
 use futures::stream::StreamExt;
+use serde_json;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -43,14 +44,14 @@ fn get_slack_token() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
-    let slack_client = Rc::new(SlackClient::new(get_slack_token(), &opts.slack_workspace));
+    let slack_client = Rc::new(SlackClient::new(get_slack_token(), &opts.slack_workspace.to_string()));
 
     let stream = EmojiPaginator::new(slack_client, 100).into_stream();
     pin_mut!(stream);
 
     let mut num_emojis: u16 = 0;
-    while let Some(emoji) = stream.next().await {
-        println!("{:#?}", emoji.unwrap());
+    while let Some(Ok(emoji)) = stream.next().await {
+        println!("{}", serde_json::to_string(&emoji)?);
         num_emojis += 1;
     }
     println!("There are {} custom emojis", num_emojis);

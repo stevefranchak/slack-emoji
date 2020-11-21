@@ -2,19 +2,23 @@ use std::error::Error;
 use std::rc::Rc;
 
 use async_stream::try_stream;
+use chrono::prelude::*;
+use chrono::serde::ts_seconds::deserialize as from_ts;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 
 use crate::SlackClient;
 
+// TODO: Might not be able to deserialize from output written to disk?
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Emoji {
     name: String,
     url: String,
-    #[serde(rename = "user_display_name")]
+    #[serde(rename(deserialize = "user_display_name"))]
     added_by: String,
     alias_for: String,
-    // TODO: would be nice to record when an emoji was created
+    #[serde(deserialize_with = "from_ts")]
+    created: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
