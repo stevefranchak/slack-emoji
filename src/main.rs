@@ -4,7 +4,6 @@ use std::rc::Rc;
 use clap::{Clap, crate_authors, crate_version};
 use futures::pin_mut;
 use futures::stream::StreamExt;
-use serde_json;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -44,17 +43,12 @@ fn get_slack_token() -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
-    let slack_client = Rc::new(SlackClient::new(get_slack_token(), &opts.slack_workspace.to_string()));
+    let slack_client = Rc::new(
+        SlackClient::new(get_slack_token(), &opts.slack_workspace.to_string())
+    );
 
     let stream = EmojiPaginator::new(slack_client, 100).into_stream();
     pin_mut!(stream);
-
-    let mut num_emojis: u16 = 0;
-    while let Some(Ok(emoji)) = stream.next().await {
-        println!("{}", serde_json::to_string(&emoji)?);
-        num_emojis += 1;
-    }
-    println!("There are {} custom emojis", num_emojis);
 
     // Generate random directory
     let mut temp_dir_path = env::temp_dir();
@@ -63,12 +57,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     fs::create_dir(&temp_dir_path).await?;
 
     let mut metadata_filepath = temp_dir_path.clone();
-    metadata_filepath.push("metadata.csv");
+    metadata_filepath.push("metadata.ndjson");
     let mut metadata_file = fs::File::create(&metadata_filepath).await?;
-    metadata_file.write_all(b"hello, world!\n").await?;
+
+    while let Some(Ok(emoji)) = stream.next().await {
+        let mut emoji_bytes = serde_json::to_vec(&emoji)?;
+        emoji_bytes.extend_from_slice(b"\n");
+        metadata_file.write_all(&emoji_bytes).await?;
+    }
     metadata_file.flush().await?;
 
     // fs::remove_dir_all(&temp_dir_path).await?;
 
-    return Ok(())
+    Ok(())
 }
