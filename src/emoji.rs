@@ -6,6 +6,7 @@ use chrono::prelude::*;
 use chrono::serde::ts_seconds::deserialize as from_ts;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
+use tokio_compat_02::FutureExt as _;
 
 use crate::SlackClient;
 
@@ -77,6 +78,7 @@ impl EmojiPaginator {
                 ("page", &curr_page.to_string()),
             ])
             .send()
+            .compat()  // hyper requires tokio 0.2 runtime, waiting on hyper 0.14 (see reqwest #1060)
             .await?
             .json()
             .await?;
