@@ -7,9 +7,11 @@ use futures::stream::StreamExt;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
+use archive::EmojiFile;
 use emoji::EmojiPaginator;
 use slack::SlackClient;
 
+mod archive;
 mod emoji;
 mod slack;
 
@@ -47,26 +49,33 @@ async fn main() -> Result<(), Box<dyn Error>> {
         SlackClient::new(get_slack_token(), &opts.slack_workspace.to_string())
     );
 
-    let stream = EmojiPaginator::new(slack_client, 100).into_stream();
+    let stream = EmojiPaginator::new(slack_client.clone(), 100).into_stream();
     pin_mut!(stream);
 
-    // Generate random directory
+    // Generate temporary directory that the archive will be created from
+    // TODO: refactor most of this as impl of an EmojiArchive struct
     let mut temp_dir_path = env::temp_dir();
     temp_dir_path.push("slack-emoji-exporter");
     fs::remove_dir_all(&temp_dir_path).await?;
     fs::create_dir(&temp_dir_path).await?;
+    println!("Temp directory located at {}", &temp_dir_path.to_str().unwrap());
 
     let mut metadata_filepath = temp_dir_path.clone();
     metadata_filepath.push("metadata.ndjson");
     let mut metadata_file = fs::File::create(&metadata_filepath).await?;
 
+    // TODO: separate consuming of stream results into a separate task (or task pool); measure perf
     while let Some(Ok(emoji)) = stream.next().await {
-        let mut emoji_bytes = serde_json::to_vec(&emoji)?;
+        let emoji_file = EmojiFile::new(emoji);
+        emoji_file.download_to_file(slack_client.clone(), &temp_dir_path).await?;
+
+        let mut emoji_bytes = serde_json::to_vec(&emoji_file)?;
         emoji_bytes.extend_from_slice(b"\n");
         metadata_file.write_all(&emoji_bytes).await?;
     }
     metadata_file.flush().await?;
 
+    // TODO: create archive at archive_file, cleanup temp directory
     // fs::remove_dir_all(&temp_dir_path).await?;
 
     Ok(())

@@ -6,20 +6,20 @@ use chrono::prelude::*;
 use chrono::serde::ts_seconds::deserialize as from_ts;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use tokio_compat_02::FutureExt as _;
+use tokio_compat_02::FutureExt;
 
-use crate::SlackClient;
+use crate::slack::SlackClient;
 
 // TODO: Might not be able to deserialize from output written to disk?
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Emoji {
-    name: String,
-    url: String,
+    pub name: String,
+    pub url: String,
     #[serde(rename(deserialize = "user_display_name"))]
-    added_by: String,
-    alias_for: String,
+    pub added_by: String,
+    pub alias_for: String,
     #[serde(deserialize_with = "from_ts")]
-    created: DateTime<Utc>,
+    pub created: DateTime<Utc>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
