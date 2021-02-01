@@ -6,7 +6,6 @@ use chrono::prelude::*;
 use chrono::serde::ts_seconds::deserialize as from_ts;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
-use tokio_compat_02::FutureExt;
 
 use crate::slack::SlackClient;
 
@@ -27,7 +26,7 @@ struct PagingInfo {
     count: u16,
     total: u16,
     page: u16,
-    pages: u16
+    pages: u16,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -44,7 +43,7 @@ pub struct EmojiPaginator {
 
 impl EmojiPaginator {
     pub fn new(client: Rc<SlackClient>, per_page: u16) -> Self {
-        Self {client, per_page}
+        Self { client, per_page }
     }
 
     pub fn into_stream(self) -> impl Stream<Item = Result<Emoji, Box<dyn Error>>> {
@@ -69,16 +68,21 @@ impl EmojiPaginator {
         }
     }
 
-    async fn fetch_slack_custom_emojis(&self, curr_page: u16) -> Result<EmojiResponse, Box <dyn Error>> {
+    async fn fetch_slack_custom_emojis(
+        &self,
+        curr_page: u16,
+    ) -> Result<EmojiResponse, Box<dyn Error>> {
         let url = self.client.generate_url("emoji.adminList");
-        let response: EmojiResponse = self.client.client.post(&url)
+        let response: EmojiResponse = self
+            .client
+            .client
+            .post(&url)
             .form(&[
                 ("token", &self.client.token),
                 ("count", &self.per_page.to_string()),
                 ("page", &curr_page.to_string()),
             ])
             .send()
-            .compat()  // hyper requires tokio 0.2 runtime, waiting on hyper 0.14 (see reqwest #1060)
             .await?
             .json()
             .await?;
