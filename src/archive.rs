@@ -21,10 +21,13 @@ pub struct EmojiDirectory {
 
 impl EmojiDirectory {
     pub fn new<T>(path: T) -> Self
-        where
-            T: Into<PathBuf>,
+    where
+        T: Into<PathBuf>,
     {
-        Self { path: path.into(), _metadata_file_handle: None }
+        Self {
+            path: path.into(),
+            _metadata_file_handle: None,
+        }
     }
 
     pub async fn ensure_exists(&self) {
@@ -43,12 +46,14 @@ impl EmojiDirectory {
 
     pub async fn open_metadata_file(&mut self) -> io::Result<&mut File> {
         if self._metadata_file_handle.is_none() {
-            self._metadata_file_handle = Some(OpenOptions::new()
-                .append(true)
-                .read(true)
-                .create(true)
-                .open(self.get_metadata_filepath())
-                .await?);
+            self._metadata_file_handle = Some(
+                OpenOptions::new()
+                    .append(true)
+                    .read(true)
+                    .create(true)
+                    .open(self.get_metadata_filepath())
+                    .await?,
+            );
         }
         Ok(self._metadata_file_handle.as_mut().unwrap())
     }
