@@ -17,7 +17,9 @@ struct Opts {
     /// Slack workspace subdomain (e.g. if your Slack is at myorg.slack.com, enter "myorg")
     #[clap(name = "SLACK WORKSPACE")]
     workspace: String,
-    /// Path to directory to either download emojis to or upload emojis from
+    /// Path to directory to either download emojis to or upload emojis from. The `export` subcommand will attempt
+    /// to create a directory at the provided path if it does not exist, whereas the `import` subcommand expects
+    /// that the provided path is an existing directory containing a well-formed 'metadata.ndjson' and emoji files.
     #[clap(name = "TARGET DIRECTORY")]
     target_directory: String,
     /// Token for a user that has permissions for Slack's administrator-level emoji endpoints.
@@ -57,6 +59,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     match opts.subcmd {
         SubCommand::Export => export(slack_client, &opts.target_directory).await,
-        SubCommand::Import => import().await,
+        SubCommand::Import => import(slack_client, &opts.target_directory).await,
     }
 }
