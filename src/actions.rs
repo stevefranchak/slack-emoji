@@ -8,6 +8,9 @@ use crate::archive::{EmojiDirectory, EmojiFile};
 use crate::emoji::EmojiPaginator;
 use crate::slack::SlackClient;
 
+// See build.rs
+include!(concat!(env!("OUT_DIR"), "/emoji_standard_shortcodes.rs"));
+
 pub async fn export<T: AsRef<str>>(
     client: Rc<SlackClient>,
     target_directory: T,
@@ -51,7 +54,13 @@ pub async fn import<T: AsRef<str>>(
     pin_mut!(stream);
 
     while let Some(Ok(emoji_file)) = stream.next().await {
-        println!("{:?}", emoji_file);
+        if EMOJI_STANDARD_SHORTCODES.contains::<str>(&emoji_file.emoji.name) {
+            eprintln!(
+                "Cannot import due to conflicting Slack short code name (Unicode emoji standard): {}",
+                emoji_file.emoji.name
+            );
+            continue;
+        }
     }
 
     Ok(())

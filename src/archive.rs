@@ -91,8 +91,8 @@ impl EmojiDirectory {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EmojiFile {
     #[serde(flatten)]
-    emoji: Emoji,
-    filename: String,
+    pub emoji: Emoji,
+    pub filename: String,
 }
 
 impl EmojiFile {
