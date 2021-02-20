@@ -65,3 +65,15 @@ pub async fn import<T: AsRef<str>>(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_emoji_standard_shortcodes() {
+        assert!(EMOJI_STANDARD_SHORTCODES.contains::<str>("seal"));
+        assert!(EMOJI_STANDARD_SHORTCODES.contains::<str>("female_elf"));
+        assert!(!EMOJI_STANDARD_SHORTCODES.contains::<str>("bogogogogogo"));
+    }
+}
