@@ -1,8 +1,10 @@
 use std::error::Error;
 use std::rc::Rc;
 
+use colored::Colorize;
 use futures::pin_mut;
 use futures::stream::StreamExt;
+use log::{error, trace, warn};
 
 use crate::archive::{EmojiDirectory, EmojiFile};
 use crate::emoji::EmojiPaginator;
@@ -28,7 +30,7 @@ pub async fn export<T: AsRef<str>>(
                     .download_to_directory(client.clone(), &mut emoji_directory)
                     .await?
             }
-            Err(e) => eprintln!("Failed to fetch emoji list or parse response: {}", e),
+            Err(e) => error!("Failed to fetch emoji list or parse response: {}", e),
         }
     }
 
@@ -54,13 +56,21 @@ pub async fn import<T: AsRef<str>>(
     pin_mut!(stream);
 
     while let Some(Ok(emoji_file)) = stream.next().await {
+        trace!("Attempting to import emoji: {:?}", emoji_file);
         if EMOJI_STANDARD_SHORTCODES.contains::<str>(&emoji_file.emoji.name) {
-            eprintln!(
-                "Cannot import due to conflicting Slack short code name (Unicode emoji standard): {}",
-                emoji_file.emoji.name
+            warn!(
+                "{}: {}",
+                "Cannot import due to conflicting Slack short code name (Unicode emoji standard)"
+                    .bright_red(),
+                emoji_file.emoji.name.yellow()
             );
             continue;
         }
+        println!(
+            "{}: {:?}",
+            emoji_file.emoji.name,
+            client.does_emoji_exist(&emoji_file.emoji.name).await?
+        );
     }
 
     Ok(())

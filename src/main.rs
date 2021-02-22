@@ -34,6 +34,8 @@ struct Opts {
         required = true
     )]
     token: String,
+    #[clap(short, long, parse(from_occurrences))]
+    verbose: u64,
     #[clap(subcommand)]
     subcmd: SubCommand,
 }
@@ -55,6 +57,7 @@ impl From<&Opts> for SlackClient {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
+    loggerv::init_with_verbosity(opts.verbose).unwrap();
     let slack_client = Rc::new(SlackClient::from(&opts));
 
     match opts.subcmd {

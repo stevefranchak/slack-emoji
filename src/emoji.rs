@@ -115,11 +115,10 @@ impl EmojiPaginator {
         &self,
         curr_page: u16,
     ) -> Result<EmojiResponse, Box<dyn Error>> {
-        let url = self.client.generate_url("emoji.adminList");
-        let response: EmojiResponse = self
+        Ok(self
             .client
             .client
-            .post(&url)
+            .post(&self.client.generate_url("emoji.adminList"))
             .form(&[
                 ("token", &self.client.token),
                 ("count", &self.per_page.to_string()),
@@ -128,8 +127,7 @@ impl EmojiPaginator {
             .send()
             .await?
             .json()
-            .await?;
-        Ok(response)
+            .await?)
     }
 }
 
