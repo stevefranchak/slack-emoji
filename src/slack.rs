@@ -10,18 +10,13 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 
+use crate::emoji::EmojiExistenceKind;
+
 #[derive(Debug)]
 pub struct SlackClient {
     pub client: Client,
     pub token: String,
     pub base_url: String,
-}
-
-#[derive(Debug)]
-pub enum EmojiExistenceKind {
-    EmojiExists,
-    EmojiExistsAsAliasFor(String),
-    EmojiDoesNotExist,
 }
 
 impl SlackClient {
@@ -58,7 +53,8 @@ impl SlackClient {
         Ok(())
     }
 
-    pub async fn does_emoji_exist<S: Into<String>>(
+    // TODO: deprecated, but keeping for now as a reference
+    pub async fn _does_emoji_exist<S: Into<String>>(
         &self,
         name: S,
     ) -> Result<EmojiExistenceKind, Box<dyn Error>> {

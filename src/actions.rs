@@ -7,7 +7,7 @@ use futures::stream::StreamExt;
 use log::{error, trace, warn};
 
 use crate::archive::{EmojiDirectory, EmojiFile};
-use crate::emoji::EmojiPaginator;
+use crate::emoji::{EmojiExistenceKind, EmojiPaginator};
 use crate::slack::SlackClient;
 
 // See build.rs
@@ -52,6 +52,10 @@ pub async fn import<T: AsRef<str>>(
         _ => (),
     };
 
+    let existing_emoji_collection = EmojiPaginator::new(client.clone(), 100)
+        .into_collection()
+        .await;
+
     let stream = emoji_directory.stream_emoji_files();
     pin_mut!(stream);
 
@@ -66,11 +70,18 @@ pub async fn import<T: AsRef<str>>(
             );
             continue;
         }
-        println!(
-            "{}: {:?}",
-            emoji_file.emoji.name,
-            client.does_emoji_exist(&emoji_file.emoji.name).await?
-        );
+        match existing_emoji_collection.get_existence_status(&emoji_file.emoji.name) {
+            EmojiExistenceKind::EmojiExists => {
+                println!("Emoji {} exists on remote", emoji_file.emoji.name)
+            }
+            EmojiExistenceKind::EmojiExistsAsAliasFor(alias_for) => {
+                println!(
+                    "Emoji {} exists on remote as an alias for {}",
+                    emoji_file.emoji.name, alias_for
+                )
+            }
+            _ => (),
+        }
     }
 
     Ok(())

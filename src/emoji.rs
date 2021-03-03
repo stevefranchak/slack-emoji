@@ -1,3 +1,4 @@
+use std::collections::hash_map::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::rc::Rc;
@@ -6,7 +7,8 @@ use std::str::FromStr;
 use async_stream::try_stream;
 use chrono::prelude::*;
 use chrono::serde::ts_seconds::deserialize as from_ts;
-use futures::stream::Stream;
+use futures::pin_mut;
+use futures::stream::{Stream, StreamExt};
 use serde::{
     de::{self, IntoDeserializer},
     Deserialize, Deserializer, Serialize,
@@ -78,6 +80,33 @@ struct EmojiResponse {
     paging: PagingInfo,
 }
 
+#[derive(Debug)]
+pub enum EmojiExistenceKind {
+    EmojiExists,
+    EmojiExistsAsAliasFor(String),
+    EmojiDoesNotExist,
+}
+
+#[derive(Debug)]
+pub struct EmojiCollection {
+    mapping: HashMap<String, Emoji>,
+}
+
+impl EmojiCollection {
+    pub fn get_existence_status<T: AsRef<str>>(&self, name: T) -> EmojiExistenceKind {
+        match self.mapping.get(name.as_ref()) {
+            Some(emoji) => {
+                if emoji.alias_for.is_empty() {
+                    EmojiExistenceKind::EmojiExists
+                } else {
+                    EmojiExistenceKind::EmojiExistsAsAliasFor(emoji.alias_for.clone())
+                }
+            }
+            None => EmojiExistenceKind::EmojiDoesNotExist,
+        }
+    }
+}
+
 pub struct EmojiPaginator {
     client: Rc<SlackClient>,
     per_page: u16,
@@ -88,6 +117,7 @@ impl EmojiPaginator {
         Self { client, per_page }
     }
 
+    // TODO: handle rate limiting
     pub fn into_stream(self) -> impl Stream<Item = Result<Emoji, Box<dyn Error>>> {
         try_stream! {
             let mut curr_page: u16 = 1;
@@ -109,6 +139,19 @@ impl EmojiPaginator {
                 curr_page += 1;
             }
         }
+    }
+
+    pub async fn into_collection(self) -> EmojiCollection {
+        let mut mapping = HashMap::new();
+
+        let stream = self.into_stream();
+        pin_mut!(stream);
+
+        while let Some(Ok(emoji)) = stream.next().await {
+            mapping.insert(emoji.name.clone(), emoji);
+        }
+
+        EmojiCollection { mapping }
     }
 
     async fn fetch_slack_custom_emojis(
