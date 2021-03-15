@@ -4,9 +4,9 @@ use std::rc::Rc;
 use colored::Colorize;
 use futures::pin_mut;
 use futures::stream::StreamExt;
-use log::{error, trace, warn};
+use log::{error, info, trace, warn};
 
-use crate::archive::{EmojiDirectory, EmojiFile};
+use crate::archive::{EmojiDirectory, EmojiFile, EmojiMetadataFile};
 use crate::emoji::{EmojiExistenceKind, EmojiPaginator};
 use crate::slack::SlackClient;
 
@@ -20,14 +20,15 @@ pub async fn export<T: AsRef<str>>(
     let stream = EmojiPaginator::new(client.clone(), 100).into_stream();
     pin_mut!(stream);
 
-    let mut emoji_directory = EmojiDirectory::new(target_directory.as_ref());
+    let emoji_directory = EmojiDirectory::new(target_directory.as_ref());
     emoji_directory.ensure_exists().await;
+    let mut metadata_file = emoji_directory.open_metadata_file().await?;
 
     while let Some(emoji_result) = stream.next().await {
         match emoji_result {
             Ok(emoji) => {
                 EmojiFile::from(emoji)
-                    .download_to_directory(client.clone(), &mut emoji_directory)
+                    .download_to_directory(client.clone(), &emoji_directory, &mut metadata_file)
                     .await?
             }
             Err(e) => error!("Failed to fetch emoji list or parse response: {}", e),
@@ -41,7 +42,7 @@ pub async fn import<T: AsRef<str>>(
     client: Rc<SlackClient>,
     target_directory: T,
 ) -> Result<(), Box<dyn Error>> {
-    let mut emoji_directory = EmojiDirectory::new(target_directory.as_ref());
+    let emoji_directory = EmojiDirectory::new(target_directory.as_ref());
     match emoji_directory.exists().await {
         Ok(false) => panic!("\"{}\" is not a directory", target_directory.as_ref()),
         Err(e) => panic!(
@@ -61,6 +62,7 @@ pub async fn import<T: AsRef<str>>(
 
     while let Some(Ok(emoji_file)) = stream.next().await {
         trace!("Attempting to import emoji: {:?}", emoji_file);
+
         if EMOJI_STANDARD_SHORTCODES.contains::<str>(&emoji_file.emoji.name) {
             warn!(
                 "{}: {}",
@@ -70,18 +72,32 @@ pub async fn import<T: AsRef<str>>(
             );
             continue;
         }
+
         match existing_emoji_collection.get_existence_status(&emoji_file.emoji.name) {
             EmojiExistenceKind::EmojiExists => {
-                println!("Emoji {} exists on remote", emoji_file.emoji.name)
+                info!("Emoji {} exists on remote; skipping", emoji_file.emoji.name);
+                continue;
             }
             EmojiExistenceKind::EmojiExistsAsAliasFor(alias_for) => {
-                println!(
-                    "Emoji {} exists on remote as an alias for {}",
+                info!(
+                    "Emoji {} exists on remote as an alias for {}; skipping",
                     emoji_file.emoji.name, alias_for
-                )
+                );
+                continue;
             }
             _ => (),
         }
+
+        // TODO - eventually remove this and handle aliases
+        if !emoji_file.emoji.alias_for.is_empty() {
+            warn!(
+                "{} is an alias for {}; adding aliases is not implemented yet; skipping",
+                emoji_file.emoji.name, emoji_file.emoji.alias_for
+            );
+            continue;
+        }
+
+        let emoji_filepath = emoji_directory.get_emoji_filepath(&emoji_file);
     }
 
     Ok(())

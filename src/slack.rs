@@ -54,7 +54,7 @@ impl SlackClient {
     }
 
     // TODO: deprecated, but keeping for now as a reference
-    pub async fn _does_emoji_exist<S: Into<String>>(
+    async fn _does_emoji_exist<S: Into<String>>(
         &self,
         name: S,
     ) -> Result<EmojiExistenceKind, Box<dyn Error>> {

@@ -1,23 +1,51 @@
+use std::cell::{RefCell, RefMut};
 use std::error::Error;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use async_stream::try_stream;
 use futures::stream::Stream;
 use serde::{Deserialize, Serialize};
 use tokio::fs::{create_dir_all, metadata, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::Mutex;
 
 use crate::emoji::Emoji;
 use crate::slack::SlackClient;
+use std::borrow::{Borrow, BorrowMut};
 
 static EMOJI_METADATA_FILENAME: &str = "metadata.ndjson";
+
+pub struct EmojiMetadataFile {
+    handle: File,
+}
+
+impl EmojiMetadataFile {
+    pub async fn open<P: AsRef<Path>>(path: P) -> io::Result<EmojiMetadataFile> {
+        Ok(EmojiMetadataFile {
+            handle: OpenOptions::new()
+                .append(true)
+                .read(true)
+                .create(true)
+                .open(path)
+                .await?
+        })
+    }
+
+    pub async fn record_emoji(&mut self, emoji_file: &EmojiFile) -> io::Result<()> {
+        let mut emoji_bytes = serde_json::to_vec(&emoji_file)?;
+        emoji_bytes.extend_from_slice(b"\n");
+        self.handle.write_all(&emoji_bytes).await?;
+        self.handle.flush().await?;
+        Ok(())
+    }
+}
 
 #[derive(Debug)]
 pub struct EmojiDirectory {
     path: PathBuf,
-    _metadata_file_handle: Option<File>,
 }
 
 impl EmojiDirectory {
@@ -27,7 +55,6 @@ impl EmojiDirectory {
     {
         Self {
             path: path.into(),
-            _metadata_file_handle: None,
         }
     }
 
@@ -49,35 +76,17 @@ impl EmojiDirectory {
         self.get_inner_filepath(EMOJI_METADATA_FILENAME)
     }
 
-    pub async fn open_metadata_file(&mut self) -> io::Result<&mut File> {
-        if self._metadata_file_handle.is_none() {
-            self._metadata_file_handle = Some(
-                OpenOptions::new()
-                    .append(true)
-                    .read(true)
-                    .create(true)
-                    .open(self.get_metadata_filepath())
-                    .await?,
-            );
-        }
-        Ok(self._metadata_file_handle.as_mut().unwrap())
+    pub fn get_emoji_filepath(&self, emoji_file: &EmojiFile) -> PathBuf {
+        self.get_inner_filepath(&emoji_file.filename)
     }
 
-    pub async fn record_metadata_for_emoji(&mut self, emoji_file: &EmojiFile) -> io::Result<()> {
-        let metadata_file = self.open_metadata_file().await?;
-        let mut emoji_bytes = serde_json::to_vec(&emoji_file)?;
-        emoji_bytes.extend_from_slice(b"\n");
-        metadata_file.write_all(&emoji_bytes).await?;
-        metadata_file.flush().await?;
-        Ok(())
+    pub async fn open_metadata_file(&self) -> io::Result<EmojiMetadataFile> {
+        EmojiMetadataFile::open(self.get_metadata_filepath()).await
     }
 
-    pub fn stream_emoji_files(
-        &mut self,
-    ) -> impl Stream<Item = Result<EmojiFile, Box<dyn Error + '_>>> {
+    pub fn stream_emoji_files(&self) -> impl Stream<Item = Result<EmojiFile, Box<dyn Error + '_>>> {
         try_stream! {
-           let metadata_file = self.open_metadata_file().await?;
-            let reader = BufReader::new(metadata_file);
+            let reader = BufReader::new(self.open_metadata_file().await?.handle);
             let mut lines = reader.lines();
 
             while let Some(line) = lines.next_line().await? {
@@ -105,14 +114,19 @@ impl EmojiFile {
     pub async fn download_to_directory(
         &self,
         client: Rc<SlackClient>,
-        directory: &mut EmojiDirectory,
+        directory: &EmojiDirectory,
+        metadata_file: &mut EmojiMetadataFile,
     ) -> Result<(), Box<dyn Error>> {
         let emoji_filepath = directory.get_inner_filepath(&self.filename);
         if !emoji_filepath.is_file() {
             client.download(&self.emoji.url, &emoji_filepath).await?;
-            directory.record_metadata_for_emoji(&self).await?;
+            metadata_file.record_emoji(&self).await?;
         }
 
+        Ok(())
+    }
+
+    pub async fn upload(&self, client: Rc<SlackClient>) -> Result<(), Box<dyn Error>> {
         Ok(())
     }
 }
