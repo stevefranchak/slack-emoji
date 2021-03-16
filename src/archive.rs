@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::error::Error;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -5,7 +6,6 @@ use std::rc::Rc;
 
 use async_stream::try_stream;
 use futures::stream::Stream;
-use log::{info, trace};
 use serde::{Deserialize, Serialize};
 use tokio::fs::{create_dir_all, metadata, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -37,6 +37,21 @@ impl EmojiMetadataFile {
         self.handle.write_all(&emoji_bytes).await?;
         self.handle.flush().await?;
         Ok(())
+    }
+
+    pub async fn get_emoji_name_set(&self) -> Result<HashSet<String>, Box<dyn Error>> {
+        // TODO: not sure how to do this without cloning since BufReader moves `handle`
+        let handle = self.handle.try_clone().await?;
+        let reader = BufReader::new(handle);
+        let mut lines = reader.lines();
+        let mut set = HashSet::new();
+
+        while let Some(line) = lines.next_line().await? {
+            let emoji_file: EmojiFile = serde_json::from_str(&line)?;
+            set.insert(emoji_file.emoji.name);
+        }
+
+        Ok(set)
     }
 }
 
@@ -110,17 +125,9 @@ impl EmojiFile {
         &self,
         client: Rc<SlackClient>,
         directory: &EmojiDirectory,
-        metadata_file: &mut EmojiMetadataFile,
     ) -> Result<(), Box<dyn Error>> {
         let emoji_filepath = directory.get_inner_filepath(&self.filename);
-        if !emoji_filepath.is_file() {
-            client.download(&self.emoji.url, &emoji_filepath).await?;
-            metadata_file.record_emoji(&self).await?;
-            info!("Downloaded emoji: {:?}", self);
-        } else {
-            trace!("Emoji is already downloaded, skipping: {:?}", self);
-        }
-
+        client.download(&self.emoji.url, &emoji_filepath).await?;
         Ok(())
     }
 

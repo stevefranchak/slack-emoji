@@ -23,13 +23,21 @@ pub async fn export<T: AsRef<str>>(
     let emoji_directory = EmojiDirectory::new(target_directory.as_ref());
     emoji_directory.ensure_exists().await;
     let mut metadata_file = emoji_directory.open_metadata_file().await?;
+    let metadata_emoji_name_set = metadata_file.get_emoji_name_set().await?;
 
     while let Some(emoji_result) = stream.next().await {
         match emoji_result {
             Ok(emoji) => {
-                EmojiFile::from(emoji)
-                    .download_to_directory(client.clone(), &emoji_directory, &mut metadata_file)
-                    .await?
+                let emoji_file = EmojiFile::from(emoji);
+                if !metadata_emoji_name_set.contains(&emoji_file.emoji.name) {
+                    emoji_file
+                        .download_to_directory(client.clone(), &emoji_directory)
+                        .await?;
+                    metadata_file.record_emoji(&emoji_file).await?;
+                    info!("Downloaded emoji: {:?}", emoji_file);
+                } else {
+                    trace!("Emoji is already downloaded, skipping: {:?}", emoji_file);
+                }
             }
             Err(e) => error!("Failed to fetch emoji list or parse response: {}", e),
         }
