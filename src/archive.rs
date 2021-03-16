@@ -1,20 +1,17 @@
-use std::cell::{RefCell, RefMut};
 use std::error::Error;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 
 use async_stream::try_stream;
 use futures::stream::Stream;
+use log::{info, trace};
 use serde::{Deserialize, Serialize};
 use tokio::fs::{create_dir_all, metadata, File, OpenOptions};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::sync::Mutex;
 
 use crate::emoji::Emoji;
 use crate::slack::SlackClient;
-use std::borrow::{Borrow, BorrowMut};
 
 static EMOJI_METADATA_FILENAME: &str = "metadata.ndjson";
 
@@ -30,7 +27,7 @@ impl EmojiMetadataFile {
                 .read(true)
                 .create(true)
                 .open(path)
-                .await?
+                .await?,
         })
     }
 
@@ -53,9 +50,7 @@ impl EmojiDirectory {
     where
         T: Into<PathBuf>,
     {
-        Self {
-            path: path.into(),
-        }
+        Self { path: path.into() }
     }
 
     pub async fn ensure_exists(&self) {
@@ -121,23 +116,35 @@ impl EmojiFile {
         if !emoji_filepath.is_file() {
             client.download(&self.emoji.url, &emoji_filepath).await?;
             metadata_file.record_emoji(&self).await?;
+            info!("Downloaded emoji: {:?}", self);
+        } else {
+            trace!("Emoji is already downloaded, skipping: {:?}", self);
         }
 
         Ok(())
     }
 
-    pub async fn upload(&self, client: Rc<SlackClient>) -> Result<(), Box<dyn Error>> {
-        Ok(())
+    pub async fn upload_from_directory(
+        &self,
+        client: Rc<SlackClient>,
+        directory: &EmojiDirectory,
+    ) -> Result<(), Box<dyn Error>> {
+        client
+            .upload(&self, directory.get_emoji_filepath(&self))
+            .await
     }
 }
 
 impl From<Emoji> for EmojiFile {
     fn from(emoji: Emoji) -> Self {
-        let filename = Self::generate_filename_from_url(&emoji.url);
-        Self { emoji, filename }
+        Self {
+            filename: Self::generate_filename_from_url(&emoji.url),
+            emoji,
+        }
     }
 }
 
+// TODO: TEST - create temp emoji metadata file and test streaming EmojiFiles from it
 #[cfg(test)]
 mod tests {
     use super::*;

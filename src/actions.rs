@@ -6,7 +6,7 @@ use futures::pin_mut;
 use futures::stream::StreamExt;
 use log::{error, info, trace, warn};
 
-use crate::archive::{EmojiDirectory, EmojiFile, EmojiMetadataFile};
+use crate::archive::{EmojiDirectory, EmojiFile};
 use crate::emoji::{EmojiExistenceKind, EmojiPaginator};
 use crate::slack::SlackClient;
 
@@ -97,7 +97,10 @@ pub async fn import<T: AsRef<str>>(
             continue;
         }
 
-        let emoji_filepath = emoji_directory.get_emoji_filepath(&emoji_file);
+        // TODO: handle error
+        emoji_file
+            .upload_from_directory(client.clone(), &emoji_directory)
+            .await?;
     }
 
     Ok(())
