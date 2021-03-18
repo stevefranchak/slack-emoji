@@ -109,7 +109,7 @@ pub async fn import<T: AsRef<str>>(
             .upload_from_directory(client.clone(), &emoji_directory)
             .await
         {
-            warn!("{}; skipping", e);
+            error!("{}; skipping", e);
         }
     }
 
