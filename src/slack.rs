@@ -8,6 +8,7 @@ use reqwest::{
     multipart::{Form, Part},
     Client,
 };
+use serde::Deserialize;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
@@ -19,6 +20,12 @@ pub struct SlackClient {
     pub client: Client,
     pub token: String,
     pub base_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MinimalSlackEndpointResponse {
+    error: Option<String>,
+    ok: bool,
 }
 
 impl SlackClient {
@@ -61,7 +68,7 @@ impl SlackClient {
         emoji_filepath: PathBuf,
     ) -> Result<(), Box<dyn Error>> {
         let mut try_count: u8 = 0;
-        loop {
+        let result = loop {
             // form needs to be recreated on each iteration of the loop since RequestBuilder moves it
             let form = Form::new()
                 .part("mode", Part::text("data"))
@@ -88,8 +95,7 @@ impl SlackClient {
                     break Err(format!(
                         "could not successfully upload emoji within 3 tries, skipping: {:?}",
                         emoji_file
-                    )
-                    .into());
+                    ));
                 };
                 try_count += 1;
                 // TODO: better error handling / maybe a better way to go about this?
@@ -103,11 +109,26 @@ impl SlackClient {
                 continue;
             }
 
-            info!("Uploaded emoji: {:?}", emoji_file);
+            break Ok(response.json::<MinimalSlackEndpointResponse>().await?);
+        };
 
-            // Trying to help with consistently hitting a rate limit at a certain point
-            sleep(Duration::from_secs(1)).await;
-            break Ok(());
+        // Trying to help with consistently hitting a rate limit at a certain point
+        sleep(Duration::from_secs(1)).await;
+
+        match result {
+            Ok(response) => {
+                if let Some(error_msg) = response.error {
+                    Err(format!(
+                        "Failed to upload emoji {} for reason: {}",
+                        emoji_file.emoji.name, error_msg
+                    )
+                    .into())
+                } else {
+                    info!("Uploaded emoji: {:?}", emoji_file);
+                    Ok(())
+                }
+            }
+            Err(e) => Err(e.into()),
         }
     }
 }

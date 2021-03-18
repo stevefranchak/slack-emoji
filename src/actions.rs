@@ -105,10 +105,12 @@ pub async fn import<T: AsRef<str>>(
             continue;
         }
 
-        // TODO: handle error
-        emoji_file
+        if let Err(e) = emoji_file
             .upload_from_directory(client.clone(), &emoji_directory)
-            .await?;
+            .await
+        {
+            warn!("{}; skipping", e);
+        }
     }
 
     Ok(())
