@@ -10,16 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  pre-commit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
-      - name: Double-check nothing got through pre-commit
-        uses: pre-commit/action@v2.0.0
-
-  build:
-    needs: pre-commit
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -29,6 +20,9 @@ jobs:
           toolchain: nightly
           override: true
           components: rustfmt, clippy
+      - uses: actions/setup-python@v2
+      - name: Double-check nothing got through pre-commit
+        uses: pre-commit/action@v2.0.0
       - name: Try release build
         uses: actions-rs/cargo@v1
         with:
