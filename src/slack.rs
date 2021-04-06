@@ -93,7 +93,7 @@ impl SlackClient {
             if let Some(wait_time_s) = response.headers().get("retry-after") {
                 if try_count == 3 {
                     break Err(format!(
-                        "could not successfully upload emoji within 3 tries, skipping: {:?}",
+                        "Could not successfully upload emoji within 3 tries, skipping: {:?}",
                         emoji_file
                     ));
                 };
@@ -112,7 +112,7 @@ impl SlackClient {
             break Ok(response.json::<MinimalSlackEndpointResponse>().await?);
         };
 
-        // Trying to help with consistently hitting a rate limit at a certain point
+        // Trying to help avoid consistently hitting a rate limit at a certain point
         sleep(Duration::from_secs(1)).await;
 
         match result {
@@ -125,6 +125,79 @@ impl SlackClient {
                     .into())
                 } else {
                     info!("Uploaded emoji: {:?}", emoji_file);
+                    Ok(())
+                }
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub async fn add_alias<T: AsRef<str>>(
+        &self,
+        name: T,
+        alias_for: T,
+    ) -> Result<(), Box<dyn Error>> {
+        let mut try_count: u8 = 0;
+        let result = loop {
+            // form needs to be recreated on each iteration of the loop since RequestBuilder moves it
+            let form = Form::new()
+                .part("mode", Part::text("alias"))
+                // clones are needed here because the values passed to reqwest::multipart::Part's text and file_name methods
+                // are bound by Into<Cow<'static, str>>, so any references passed in would need to have a 'static lifetime.
+                .part("name", Part::text(name.as_ref().to_string()))
+                .part("alias_for", Part::text(alias_for.as_ref().to_string()))
+                .part("token", Part::text(self.token.clone()));
+
+            let response = self
+                .client
+                .post(&self.generate_url("emoji.add"))
+                .multipart(form)
+                .send()
+                .await?;
+
+            // TODO: if multiple Slack requests rely on handling rate-limiting, could this be better abstracted with a macro?
+            if let Some(wait_time_s) = response.headers().get("retry-after") {
+                if try_count == 3 {
+                    break Err(format!(
+                        "Could not successfully add alias '{}' for '{}' within 3 tries, skipping",
+                        name.as_ref(),
+                        alias_for.as_ref()
+                    ));
+                };
+                try_count += 1;
+                // TODO: better error handling / maybe a better way to go about this?
+                let wait_time_s: u64 = wait_time_s.to_str()?.parse()?;
+                trace!(
+                    "Hit rate-limit on emoji.add for adding alias '{}' for '{}'; retrying in {} seconds",
+                    name.as_ref(), alias_for.as_ref(),
+                    wait_time_s
+                );
+                sleep(Duration::from_secs(wait_time_s)).await;
+                continue;
+            }
+
+            break Ok(response.json::<MinimalSlackEndpointResponse>().await?);
+        };
+
+        // Trying to help avoid consistently hitting a rate limit at a certain point
+        sleep(Duration::from_secs(1)).await;
+
+        match result {
+            Ok(response) => {
+                if let Some(error_msg) = response.error {
+                    Err(format!(
+                        "Failed to add alias '{}' for '{}' for reason: {}",
+                        name.as_ref(),
+                        alias_for.as_ref(),
+                        error_msg
+                    )
+                    .into())
+                } else {
+                    info!(
+                        "Added alias '{}' for '{}'",
+                        name.as_ref(),
+                        alias_for.as_ref()
+                    );
                     Ok(())
                 }
             }

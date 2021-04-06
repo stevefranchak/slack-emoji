@@ -68,6 +68,8 @@ pub async fn import<T: AsRef<str>>(
     let stream = emoji_directory.stream_emoji_files();
     pin_mut!(stream);
 
+    let mut aliases_to_process: Vec<EmojiFile> = vec![];
+
     while let Some(Ok(emoji_file)) = stream.next().await {
         trace!("Attempting to import emoji: {:?}", emoji_file);
 
@@ -96,17 +98,23 @@ pub async fn import<T: AsRef<str>>(
             _ => (),
         }
 
-        // TODO - eventually remove this and handle aliases
+        // Handle aliases later to give a chance for the aliased emoji to be uploaded
         if !emoji_file.emoji.alias_for.is_empty() {
-            warn!(
-                "{} is an alias for {}; adding aliases is not implemented yet; skipping",
-                emoji_file.emoji.name, emoji_file.emoji.alias_for
-            );
+            aliases_to_process.push(emoji_file);
             continue;
         }
 
         if let Err(e) = emoji_file
             .upload_from_directory(client.clone(), &emoji_directory)
+            .await
+        {
+            error!("{}; skipping", e);
+        }
+    }
+
+    for alias_file in aliases_to_process {
+        if let Err(e) = client
+            .add_alias(&alias_file.emoji.name, &alias_file.emoji.alias_for)
             .await
         {
             error!("{}; skipping", e);
