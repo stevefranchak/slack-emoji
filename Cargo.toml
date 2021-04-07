@@ -1,5 +1,5 @@
 [package]
-name = "slack-emoji"
+name = "slack_emoji"
 version = "0.1.0"
 authors = ["Steve Franchak <stevefranchak@gmail.com>"]
 description = "CLI tool for downloading emojis from or uploading emojis to a Slack workspace."
