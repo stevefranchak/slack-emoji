@@ -13,7 +13,7 @@ use crate::slack::SlackClient;
 // See build.rs
 include!(concat!(env!("OUT_DIR"), "/emoji_standard_shortcodes.rs"));
 
-pub async fn export<T: AsRef<str>>(
+pub async fn download<T: AsRef<str>>(
     client: Rc<SlackClient>,
     target_directory: T,
 ) -> Result<(), Box<dyn Error>> {
@@ -46,7 +46,7 @@ pub async fn export<T: AsRef<str>>(
     Ok(())
 }
 
-pub async fn import<T: AsRef<str>>(
+pub async fn upload<T: AsRef<str>>(
     client: Rc<SlackClient>,
     target_directory: T,
 ) -> Result<(), Box<dyn Error>> {
@@ -71,12 +71,12 @@ pub async fn import<T: AsRef<str>>(
     let mut aliases_to_process: Vec<EmojiFile> = vec![];
 
     while let Some(Ok(emoji_file)) = stream.next().await {
-        trace!("Attempting to import emoji: {:?}", emoji_file);
+        trace!("Determining whether to upload emoji: {:?}", emoji_file);
 
         if EMOJI_STANDARD_SHORTCODES.contains::<str>(&emoji_file.emoji.name) {
             warn!(
                 "{}: {}",
-                "Cannot import due to conflicting Slack short code name (Unicode emoji standard)"
+                "Cannot upload emoji due to conflicting Slack short code name (Unicode emoji standard)"
                     .bright_red(),
                 emoji_file.emoji.name.yellow()
             );
@@ -85,13 +85,14 @@ pub async fn import<T: AsRef<str>>(
 
         match existing_emoji_collection.get_existence_status(&emoji_file.emoji.name) {
             EmojiExistenceKind::EmojiExists => {
-                info!("Emoji {} exists on remote; skipping", emoji_file.emoji.name);
+                trace!("Emoji {} exists on remote; skipping", emoji_file.emoji.name);
                 continue;
             }
             EmojiExistenceKind::EmojiExistsAsAliasFor(alias_for) => {
-                info!(
+                trace!(
                     "Emoji {} exists on remote as an alias for {}; skipping",
-                    emoji_file.emoji.name, alias_for
+                    emoji_file.emoji.name,
+                    alias_for
                 );
                 continue;
             }

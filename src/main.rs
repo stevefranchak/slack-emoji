@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use clap::{crate_authors, crate_description, crate_version, Clap};
 
-use actions::{export, import};
+use actions::{download, upload};
 use slack::SlackClient;
 
 mod actions;
@@ -17,8 +17,8 @@ struct Opts {
     /// Slack workspace subdomain (e.g. if your Slack is at myorg.slack.com, enter "myorg")
     #[clap(name = "SLACK WORKSPACE")]
     workspace: String,
-    /// Path to directory to either download emojis to or upload emojis from. The `export` subcommand will attempt
-    /// to create a directory at the provided path if it does not exist, whereas the `import` subcommand expects
+    /// Path to directory to either download emojis to or upload emojis from. The `download` subcommand will attempt
+    /// to create a directory at the provided path if it does not exist, whereas the `upload` subcommand expects
     /// that the provided path is an existing directory containing a well-formed 'metadata.ndjson' and emoji files.
     #[clap(name = "TARGET DIRECTORY")]
     target_directory: String,
@@ -34,7 +34,8 @@ struct Opts {
         required = true
     )]
     token: String,
-    #[clap(short, long, parse(from_occurrences))]
+    /// Log level
+    #[clap(short, parse(from_occurrences))]
     verbose: u64,
     #[clap(subcommand)]
     subcmd: SubCommand,
@@ -43,9 +44,9 @@ struct Opts {
 #[derive(Clap)]
 enum SubCommand {
     /// Downloads emojis from SLACK WORKSPACE to TARGET DIRECTORY
-    Export,
+    Download,
     /// Uploads emojis to SLACK WORKSPACE from TARGET DIRECTORY
-    Import,
+    Upload,
 }
 
 impl From<&Opts> for SlackClient {
@@ -61,7 +62,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let slack_client = Rc::new(SlackClient::from(&opts));
 
     match opts.subcmd {
-        SubCommand::Export => export(slack_client, &opts.target_directory).await,
-        SubCommand::Import => import(slack_client, &opts.target_directory).await,
+        SubCommand::Download => download(slack_client, &opts.target_directory).await,
+        SubCommand::Upload => upload(slack_client, &opts.target_directory).await,
     }
 }
