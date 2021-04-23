@@ -2,6 +2,8 @@ use std::error::Error;
 use std::rc::Rc;
 
 use clap::{crate_authors, crate_description, crate_version, Clap};
+use env_logger::{Builder, Env};
+use log::LevelFilter;
 
 use actions::{download, upload};
 use slack::SlackClient;
@@ -36,7 +38,7 @@ struct Opts {
     token: String,
     /// Log level
     #[clap(short, parse(from_occurrences))]
-    verbose: u64,
+    verbose: u8,
     #[clap(subcommand)]
     subcmd: SubCommand,
 }
@@ -55,10 +57,27 @@ impl From<&Opts> for SlackClient {
     }
 }
 
+fn setup_logging(verbosity: u8) {
+    let env = Env::default()
+        .filter_or("SLACK_EMOJI_LOG_LEVEL", "warn")
+        .write_style_or("SLACK_EMOJI_LOG_STYLE", "always");
+
+    let mut builder = Builder::new();
+    builder.parse_env(env);
+    if verbosity > 0 {
+        builder.filter_level(match verbosity {
+            1 => LevelFilter::Info,
+            2 => LevelFilter::Debug,
+            _ => LevelFilter::Trace,
+        });
+    }
+    builder.init();
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
-    loggerv::init_with_verbosity(opts.verbose).unwrap();
+    setup_logging(opts.verbose);
     let slack_client = Rc::new(SlackClient::from(&opts));
 
     match opts.subcmd {
