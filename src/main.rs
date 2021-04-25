@@ -36,7 +36,10 @@ struct Opts {
         required = true
     )]
     token: String,
-    /// Log level
+    /// Sets the log level based on occurrences. The default log level includes ERROR and WARN messages. One occurrence
+    /// includes INFO messages, two occurrences include DEBUG messages, and three or more occurrences include TRACE
+    /// messages. The log level can also be set via the environment variable "SLACK_EMOJI_LOG_LEVEL". This argument, if
+    /// provided, takes precedence over a set environment variable.
     #[clap(short, parse(from_occurrences))]
     verbose: u8,
     #[clap(subcommand)]
@@ -60,7 +63,7 @@ impl From<&Opts> for SlackClient {
 fn setup_logging(verbosity: u8) {
     let env = Env::default()
         .filter_or("SLACK_EMOJI_LOG_LEVEL", "warn")
-        .write_style_or("SLACK_EMOJI_LOG_STYLE", "always");
+        .write_style_or("SLACK_EMOJI_LOG_STYLE", "always"); // "never" disables color formatting
 
     let mut builder = Builder::new();
     builder.parse_env(env);
@@ -79,7 +82,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let opts = Opts::parse();
     setup_logging(opts.verbose);
     let slack_client = Rc::new(SlackClient::from(&opts));
-
     match opts.subcmd {
         SubCommand::Download => download(slack_client, &opts.target_directory).await,
         SubCommand::Upload => upload(slack_client, &opts.target_directory).await,
