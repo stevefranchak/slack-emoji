@@ -65,21 +65,6 @@ where
     deserializer.deserialize_any(FromTsOrStringVisitor)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct PagingInfo {
-    count: u16,
-    total: u16,
-    page: u16,
-    pages: u16,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct EmojiResponse {
-    #[serde(rename = "emoji")]
-    emojis: Vec<Emoji>,
-    paging: PagingInfo,
-}
-
 #[derive(Debug)]
 pub enum EmojiExistenceKind {
     EmojiExists,
@@ -88,13 +73,19 @@ pub enum EmojiExistenceKind {
 }
 
 #[derive(Debug)]
-pub struct EmojiCollection {
-    mapping: HashMap<String, Emoji>,
-}
+pub struct EmojiCollection(HashMap<String, Emoji>);
 
 impl EmojiCollection {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn insert(&mut self, emoji: Emoji) -> Option<Emoji> {
+        self.0.insert(emoji.name.clone(), emoji)
+    }
+
     pub fn get_existence_status<T: AsRef<str>>(&self, name: T) -> EmojiExistenceKind {
-        match self.mapping.get(name.as_ref()) {
+        match self.0.get(name.as_ref()) {
             Some(emoji) => {
                 if emoji.alias_for.is_empty() {
                     EmojiExistenceKind::EmojiExists
@@ -105,171 +96,41 @@ impl EmojiCollection {
             None => EmojiExistenceKind::EmojiDoesNotExist,
         }
     }
-}
 
-pub struct EmojiPaginator {
-    client: Rc<SlackClient>,
-    per_page: u16,
-}
+    pub async fn from_new_emoji_stream(client: Rc<SlackClient>) -> Self {
+        let mut collection = Self::new();
 
-impl EmojiPaginator {
-    pub fn new(client: Rc<SlackClient>, per_page: u16) -> Self {
-        Self { client, per_page }
-    }
-
-    // TODO: handle rate limiting
-    pub fn into_stream(self) -> impl Stream<Item = Result<Emoji, Box<dyn Error>>> {
-        try_stream! {
-            let mut curr_page: u16 = 1;
-            let mut num_pages: Option<u16> = None;
-            loop {
-                if let Some(num_pages) = num_pages {
-                    if curr_page > num_pages {
-                        break;
-                    }
-                }
-                let response = self.fetch_slack_custom_emojis(curr_page).await?;
-
-                if num_pages.is_none() {
-                    num_pages = Some(response.paging.pages);
-                }
-                for emoji in response.emojis {
-                    yield emoji;
-                }
-                curr_page += 1;
-            }
-        }
-    }
-
-    pub async fn into_collection(self) -> EmojiCollection {
-        let mut mapping = HashMap::new();
-
-        let stream = self.into_stream();
+        let stream = new_emoji_stream(client.clone());
         pin_mut!(stream);
 
         while let Some(Ok(emoji)) = stream.next().await {
-            mapping.insert(emoji.name.clone(), emoji);
+            collection.insert(emoji);
         }
 
-        EmojiCollection { mapping }
-    }
-
-    async fn fetch_slack_custom_emojis(
-        &self,
-        curr_page: u16,
-    ) -> Result<EmojiResponse, Box<dyn Error>> {
-        Ok(self
-            .client
-            .client
-            .post(&self.client.generate_url("emoji.adminList"))
-            .form(&[
-                ("token", &self.client.token),
-                ("count", &self.per_page.to_string()),
-                ("page", &curr_page.to_string()),
-            ])
-            .send()
-            .await?
-            .json()
-            .await?)
+        collection
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_emoji_response_from_slack_api() {
-        let emoji_response_json = r#"
-            {
-                "ok": true,
-                "emoji": [
-                    {
-                        "name": "-1000",
-                        "is_alias": 0,
-                        "alias_for": "",
-                        "url": "https://emoji.slack-edge.com/T03C6ES54/-1000/test1.png",
-                        "created": 1595443479,
-                        "team_id": "T12345",
-                        "user_id": "U12345",
-                        "user_display_name": "Jimmy Dean",
-                        "avatar_hash": "eaadc23dd547",
-                        "can_delete": true,
-                        "is_bad": false,
-                        "synonyms": []
-                    },
-                    {
-                        "name": "1000",
-                        "is_alias": 1,
-                        "alias_for": "-1000",
-                        "url": "https://emoji.slack-edge.com/T03C6ES54/1000/test2.png",
-                        "created": 1595443506,
-                        "team_id": "T12345",
-                        "user_id": "U12345",
-                        "user_display_name": "SPOONBEARD",
-                        "avatar_hash": "eaadc23dd547",
-                        "can_delete": false,
-                        "is_bad": false,
-                        "synonyms": [
-                            "1000",
-                            "-1000"
-                        ]
-                    }
-                ],
-                "disabled_emoji": [],
-                "custom_emoji_total_count": 915,
-                "paging": {
-                    "count": 2,
-                    "total": 915,
-                    "page": 1,
-                    "pages": 458
+pub fn new_emoji_stream(
+    slack_client: Rc<SlackClient>,
+) -> impl Stream<Item = Result<Emoji, Box<dyn Error>>> {
+    try_stream! {
+        let mut curr_page: u16 = 1;
+        let mut known_num_pages: Option<u16> = None;
+        loop {
+            if let Some(num_pages) = known_num_pages {
+                if curr_page > num_pages {
+                    break;
                 }
             }
-        "#;
-
-        let parsed_response: EmojiResponse = serde_json::from_str(emoji_response_json).unwrap();
-
-        assert_eq!(parsed_response.emojis.len(), 2);
-        assert_eq!(parsed_response.paging.count, 2);
-        assert_eq!(parsed_response.paging.total, 915);
-        assert_eq!(parsed_response.paging.page, 1);
-        assert_eq!(parsed_response.paging.pages, 458);
-
-        assert_eq!(parsed_response.emojis[0].name, "-1000");
-        assert_eq!(parsed_response.emojis[0].added_by, "Jimmy Dean");
-        assert_eq!(parsed_response.emojis[0].alias_for, "");
-        assert_eq!(
-            parsed_response.emojis[0].created,
-            "2020-07-22T18:44:39Z".parse::<DateTime<Utc>>().unwrap()
-        );
-        assert_eq!(
-            parsed_response.emojis[0].url,
-            "https://emoji.slack-edge.com/T03C6ES54/-1000/test1.png"
-        );
-
-        assert_eq!(parsed_response.emojis[1].name, "1000");
-        assert_eq!(parsed_response.emojis[1].added_by, "SPOONBEARD");
-        assert_eq!(parsed_response.emojis[1].alias_for, "-1000");
-        assert_eq!(
-            parsed_response.emojis[1].created,
-            "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
-        );
-        assert_eq!(
-            parsed_response.emojis[1].url,
-            "https://emoji.slack-edge.com/T03C6ES54/1000/test2.png"
-        );
-
-        let encoded_as_string = serde_json::to_string(&parsed_response.emojis[1]).unwrap();
-        assert_eq!(
-            encoded_as_string,
-            r#"{"name":"1000","url":"https://emoji.slack-edge.com/T03C6ES54/1000/test2.png","added_by":"SPOONBEARD","alias_for":"-1000","created":"2020-07-22T18:45:06Z"}"#
-        );
-
-        // Quick test that we can deserialize the just-serialized string to test deserialize_with = "from_ts_or_string"
-        let parsed_emoji: Emoji = serde_json::from_str(&encoded_as_string).unwrap();
-        assert_eq!(
-            parsed_emoji.created,
-            "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
-        );
+            let (emojis, num_pages) = slack_client.fetch_custom_emoji_page(curr_page).await?;
+            if known_num_pages.is_none() {
+                known_num_pages = Some(num_pages);
+            }
+            for emoji in emojis {
+                yield emoji;
+            }
+            curr_page += 1;
+        }
     }
 }

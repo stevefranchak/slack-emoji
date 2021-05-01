@@ -14,6 +14,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
 
 use crate::archive::EmojiFile;
+use crate::emoji::Emoji;
 
 #[derive(Debug)]
 pub struct SlackClient {
@@ -23,9 +24,21 @@ pub struct SlackClient {
 }
 
 #[derive(Debug, Deserialize)]
-struct MinimalSlackEndpointResponse {
+struct StatusResponse {
     error: Option<String>,
     ok: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PagingInfo {
+    pages: u16,
+}
+
+#[derive(Debug, Deserialize)]
+struct EmojiResponse {
+    #[serde(rename = "emoji")]
+    emojis: Vec<Emoji>,
+    paging: PagingInfo,
 }
 
 impl SlackClient {
@@ -39,6 +52,27 @@ impl SlackClient {
 
     pub fn generate_url<T: AsRef<str>>(&self, endpoint: T) -> String {
         format!("{}/{}", self.base_url, endpoint.as_ref())
+    }
+
+    // TODO - add retry logic if rate limited
+    pub async fn fetch_custom_emoji_page(
+        &self,
+        curr_page: u16,
+    ) -> Result<(Vec<Emoji>, u16), Box<dyn Error>> {
+        let response: EmojiResponse = self
+            .client
+            .post(&self.generate_url("emoji.adminList"))
+            .form(&[
+                ("token", &self.token),
+                ("count", &"100".into()),
+                ("page", &curr_page.to_string()),
+            ])
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok((response.emojis, response.paging.pages))
     }
 
     pub async fn download<P: AsRef<Path>, T: AsRef<str>>(
@@ -109,7 +143,7 @@ impl SlackClient {
                 continue;
             }
 
-            break Ok(response.json::<MinimalSlackEndpointResponse>().await?);
+            break Ok(response.json::<StatusResponse>().await?);
         };
 
         // Trying to help avoid consistently hitting a rate limit at a certain point
@@ -176,7 +210,7 @@ impl SlackClient {
                 continue;
             }
 
-            break Ok(response.json::<MinimalSlackEndpointResponse>().await?);
+            break Ok(response.json::<StatusResponse>().await?);
         };
 
         // Trying to help avoid consistently hitting a rate limit at a certain point
@@ -203,5 +237,103 @@ impl SlackClient {
             }
             Err(e) => Err(e.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::prelude::*;
+
+    #[test]
+    fn test_emoji_response_from_slack_api() {
+        let emoji_response_json = r#"
+            {
+                "ok": true,
+                "emoji": [
+                    {
+                        "name": "-1000",
+                        "is_alias": 0,
+                        "alias_for": "",
+                        "url": "https://emoji.slack-edge.com/T03C6ES54/-1000/test1.png",
+                        "created": 1595443479,
+                        "team_id": "T12345",
+                        "user_id": "U12345",
+                        "user_display_name": "Jimmy Dean",
+                        "avatar_hash": "eaadc23dd547",
+                        "can_delete": true,
+                        "is_bad": false,
+                        "synonyms": []
+                    },
+                    {
+                        "name": "1000",
+                        "is_alias": 1,
+                        "alias_for": "-1000",
+                        "url": "https://emoji.slack-edge.com/T03C6ES54/1000/test2.png",
+                        "created": 1595443506,
+                        "team_id": "T12345",
+                        "user_id": "U12345",
+                        "user_display_name": "SPOONBEARD",
+                        "avatar_hash": "eaadc23dd547",
+                        "can_delete": false,
+                        "is_bad": false,
+                        "synonyms": [
+                            "1000",
+                            "-1000"
+                        ]
+                    }
+                ],
+                "disabled_emoji": [],
+                "custom_emoji_total_count": 915,
+                "paging": {
+                    "count": 2,
+                    "total": 915,
+                    "page": 1,
+                    "pages": 458
+                }
+            }
+        "#;
+
+        let parsed_response: EmojiResponse = serde_json::from_str(emoji_response_json).unwrap();
+
+        assert_eq!(parsed_response.emojis.len(), 2);
+        assert_eq!(parsed_response.paging.pages, 458);
+
+        assert_eq!(parsed_response.emojis[0].name, "-1000");
+        assert_eq!(parsed_response.emojis[0].added_by, "Jimmy Dean");
+        assert_eq!(parsed_response.emojis[0].alias_for, "");
+        assert_eq!(
+            parsed_response.emojis[0].created,
+            "2020-07-22T18:44:39Z".parse::<DateTime<Utc>>().unwrap()
+        );
+        assert_eq!(
+            parsed_response.emojis[0].url,
+            "https://emoji.slack-edge.com/T03C6ES54/-1000/test1.png"
+        );
+
+        assert_eq!(parsed_response.emojis[1].name, "1000");
+        assert_eq!(parsed_response.emojis[1].added_by, "SPOONBEARD");
+        assert_eq!(parsed_response.emojis[1].alias_for, "-1000");
+        assert_eq!(
+            parsed_response.emojis[1].created,
+            "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
+        );
+        assert_eq!(
+            parsed_response.emojis[1].url,
+            "https://emoji.slack-edge.com/T03C6ES54/1000/test2.png"
+        );
+
+        let encoded_as_string = serde_json::to_string(&parsed_response.emojis[1]).unwrap();
+        assert_eq!(
+            encoded_as_string,
+            r#"{"name":"1000","url":"https://emoji.slack-edge.com/T03C6ES54/1000/test2.png","added_by":"SPOONBEARD","alias_for":"-1000","created":"2020-07-22T18:45:06Z"}"#
+        );
+
+        // Quick test that we can deserialize the just-serialized string to test deserialize_with = "from_ts_or_string"
+        let parsed_emoji: Emoji = serde_json::from_str(&encoded_as_string).unwrap();
+        assert_eq!(
+            parsed_emoji.created,
+            "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
+        );
     }
 }

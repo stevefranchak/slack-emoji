@@ -115,8 +115,8 @@ pub struct EmojiFile {
 }
 
 impl EmojiFile {
-    fn generate_filename_from_url<T: AsRef<str>>(url: T) -> String {
-        let url = url.as_ref().to_string();
+    fn generate_filename_from_url<S: Into<String>>(url: S) -> String {
+        let url = url.into();
         let filename_parts: Vec<&str> = url.rsplitn(3, '/').take(2).collect();
         format!("{}-{}", filename_parts[1], filename_parts[0])
     }

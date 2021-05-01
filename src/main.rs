@@ -39,7 +39,7 @@ struct Opts {
     /// Sets the log level based on occurrences. The default log level includes ERROR and WARN messages. One occurrence
     /// includes INFO messages, two occurrences include DEBUG messages, and three or more occurrences include TRACE
     /// messages. The log level can also be set via the environment variable "SLACK_EMOJI_LOG_LEVEL". This argument, if
-    /// provided, takes precedence over a set environment variable.
+    /// provided, takes precedence over the aforementioned environment variable.
     #[clap(short, parse(from_occurrences))]
     verbose: u8,
     #[clap(subcommand)]

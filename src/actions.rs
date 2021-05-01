@@ -7,7 +7,7 @@ use futures::stream::StreamExt;
 use log::{error, info, trace, warn};
 
 use crate::archive::{EmojiDirectory, EmojiFile};
-use crate::emoji::{EmojiExistenceKind, EmojiPaginator};
+use crate::emoji::{new_emoji_stream, EmojiCollection, EmojiExistenceKind};
 use crate::slack::SlackClient;
 
 // See build.rs
@@ -17,7 +17,7 @@ pub async fn download<T: AsRef<str>>(
     client: Rc<SlackClient>,
     target_directory: T,
 ) -> Result<(), Box<dyn Error>> {
-    let stream = EmojiPaginator::new(client.clone(), 100).into_stream();
+    let stream = new_emoji_stream(client.clone());
     pin_mut!(stream);
 
     let emoji_directory = EmojiDirectory::new(target_directory.as_ref());
@@ -61,14 +61,11 @@ pub async fn upload<T: AsRef<str>>(
         _ => (),
     };
 
-    let existing_emoji_collection = EmojiPaginator::new(client.clone(), 100)
-        .into_collection()
-        .await;
-
+    let existing_emoji_collection = EmojiCollection::from_new_emoji_stream(client.clone()).await;
     let stream = emoji_directory.stream_emoji_files();
     pin_mut!(stream);
 
-    let mut aliases_to_process: Vec<EmojiFile> = vec![];
+    let mut aliases_to_process: Vec<EmojiFile> = Vec::new();
 
     while let Some(Ok(emoji_file)) = stream.next().await {
         trace!("Determining whether to upload emoji: {:?}", emoji_file);
