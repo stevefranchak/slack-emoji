@@ -3,7 +3,7 @@ name = "slack_emoji"
 version = "0.1.0"
 authors = ["Steve Franchak <stevefranchak@gmail.com>"]
 description = "CLI tool for downloading emojis from or uploading emojis to a Slack workspace."
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

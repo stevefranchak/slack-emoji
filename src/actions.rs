@@ -81,11 +81,11 @@ pub async fn upload<T: AsRef<str>>(
         }
 
         match existing_emoji_collection.get_existence_status(&emoji_file.emoji.name) {
-            EmojiExistenceKind::EmojiExists => {
+            EmojiExistenceKind::Exists => {
                 trace!("Emoji {} exists on remote; skipping", emoji_file.emoji.name);
                 continue;
             }
-            EmojiExistenceKind::EmojiExistsAsAliasFor(alias_for) => {
+            EmojiExistenceKind::ExistsAsAliasFor(alias_for) => {
                 trace!(
                     "Emoji {} exists on remote as an alias for {}; skipping",
                     emoji_file.emoji.name,

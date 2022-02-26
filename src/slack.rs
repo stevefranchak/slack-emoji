@@ -26,7 +26,6 @@ pub struct SlackClient {
 #[derive(Debug, Deserialize)]
 struct StatusResponse {
     error: Option<String>,
-    ok: bool,
 }
 
 #[derive(Debug, Deserialize)]

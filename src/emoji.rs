@@ -67,9 +67,9 @@ where
 
 #[derive(Debug)]
 pub enum EmojiExistenceKind {
-    EmojiExists,
-    EmojiExistsAsAliasFor(String),
-    EmojiDoesNotExist,
+    Exists,
+    ExistsAsAliasFor(String),
+    DoesNotExist,
 }
 
 #[derive(Debug)]
@@ -88,12 +88,12 @@ impl EmojiCollection {
         match self.0.get(name.as_ref()) {
             Some(emoji) => {
                 if emoji.alias_for.is_empty() {
-                    EmojiExistenceKind::EmojiExists
+                    EmojiExistenceKind::Exists
                 } else {
-                    EmojiExistenceKind::EmojiExistsAsAliasFor(emoji.alias_for.clone())
+                    EmojiExistenceKind::ExistsAsAliasFor(emoji.alias_for.clone())
                 }
             }
-            None => EmojiExistenceKind::EmojiDoesNotExist,
+            None => EmojiExistenceKind::DoesNotExist,
         }
     }
 

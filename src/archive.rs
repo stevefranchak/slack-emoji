@@ -137,7 +137,7 @@ impl EmojiFile {
         directory: &EmojiDirectory,
     ) -> Result<(), Box<dyn Error>> {
         client
-            .upload(&self, directory.get_emoji_filepath(&self))
+            .upload(self, directory.get_emoji_filepath(self))
             .await
     }
 }
