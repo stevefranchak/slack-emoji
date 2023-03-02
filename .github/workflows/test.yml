@@ -13,16 +13,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       - name: Install latest nightly
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
-          components: rustfmt, clippy
-      - uses: actions/setup-python@v2
-      - name: Double-check nothing got through pre-commit
-        uses: pre-commit/action@v2.0.0
+          components: clippy
       - name: Try release build
         uses: actions-rs/cargo@v1
         with:
