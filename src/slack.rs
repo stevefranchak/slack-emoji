@@ -310,46 +310,51 @@ mod tests {
             }
         "#;
 
-        let parsed_response: EmojiResponse = serde_json::from_str(emoji_response_json).unwrap();
+        let parsed_response: FetchCustomEmojiPageResponseKind =
+            serde_json::from_str(emoji_response_json).unwrap();
+        match parsed_response {
+            FetchCustomEmojiPageResponseKind::EmojiResponse { emojis, paging } => {
+                assert_eq!(emojis.len(), 2);
+                assert_eq!(paging.pages, 458);
 
-        assert_eq!(parsed_response.emojis.len(), 2);
-        assert_eq!(parsed_response.paging.pages, 458);
+                assert_eq!(emojis[0].name, "-1000");
+                assert_eq!(emojis[0].added_by, "Jimmy Dean");
+                assert_eq!(emojis[0].alias_for, "");
+                assert_eq!(
+                    emojis[0].created,
+                    "2020-07-22T18:44:39Z".parse::<DateTime<Utc>>().unwrap()
+                );
+                assert_eq!(
+                    emojis[0].url,
+                    "https://emoji.slack-edge.com/T03C6ES54/-1000/test1.png"
+                );
 
-        assert_eq!(parsed_response.emojis[0].name, "-1000");
-        assert_eq!(parsed_response.emojis[0].added_by, "Jimmy Dean");
-        assert_eq!(parsed_response.emojis[0].alias_for, "");
-        assert_eq!(
-            parsed_response.emojis[0].created,
-            "2020-07-22T18:44:39Z".parse::<DateTime<Utc>>().unwrap()
-        );
-        assert_eq!(
-            parsed_response.emojis[0].url,
-            "https://emoji.slack-edge.com/T03C6ES54/-1000/test1.png"
-        );
+                assert_eq!(emojis[1].name, "1000");
+                assert_eq!(emojis[1].added_by, "SPOONBEARD");
+                assert_eq!(emojis[1].alias_for, "-1000");
+                assert_eq!(
+                    emojis[1].created,
+                    "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
+                );
+                assert_eq!(
+                    emojis[1].url,
+                    "https://emoji.slack-edge.com/T03C6ES54/1000/test2.png"
+                );
 
-        assert_eq!(parsed_response.emojis[1].name, "1000");
-        assert_eq!(parsed_response.emojis[1].added_by, "SPOONBEARD");
-        assert_eq!(parsed_response.emojis[1].alias_for, "-1000");
-        assert_eq!(
-            parsed_response.emojis[1].created,
-            "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
-        );
-        assert_eq!(
-            parsed_response.emojis[1].url,
-            "https://emoji.slack-edge.com/T03C6ES54/1000/test2.png"
-        );
+                let encoded_as_string = serde_json::to_string(&emojis[1]).unwrap();
+                assert_eq!(
+                    encoded_as_string,
+                    r#"{"name":"1000","url":"https://emoji.slack-edge.com/T03C6ES54/1000/test2.png","added_by":"SPOONBEARD","alias_for":"-1000","created":"2020-07-22T18:45:06Z"}"#
+                );
 
-        let encoded_as_string = serde_json::to_string(&parsed_response.emojis[1]).unwrap();
-        assert_eq!(
-            encoded_as_string,
-            r#"{"name":"1000","url":"https://emoji.slack-edge.com/T03C6ES54/1000/test2.png","added_by":"SPOONBEARD","alias_for":"-1000","created":"2020-07-22T18:45:06Z"}"#
-        );
-
-        // Quick test that we can deserialize the just-serialized string to test deserialize_with = "from_ts_or_string"
-        let parsed_emoji: Emoji = serde_json::from_str(&encoded_as_string).unwrap();
-        assert_eq!(
-            parsed_emoji.created,
-            "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
-        );
+                // Quick test that we can deserialize the just-serialized string to test deserialize_with = "from_ts_or_string"
+                let parsed_emoji: Emoji = serde_json::from_str(&encoded_as_string).unwrap();
+                assert_eq!(
+                    parsed_emoji.created,
+                    "2020-07-22T18:45:06Z".parse::<DateTime<Utc>>().unwrap()
+                );
+            }
+            _ => panic!("Unexpected parsed type for FetchCustomEmojiPageResponseKind"),
+        }
     }
 }
