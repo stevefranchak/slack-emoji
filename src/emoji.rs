@@ -65,6 +65,39 @@ where
     deserializer.deserialize_any(FromTsOrStringVisitor)
 }
 
+pub const DEFAULT_STARTING_PAGE: u16 = 1;
+pub const DEFAULT_NUM_EMOJIS_PER_PAGE: u8 = 100;
+
+pub struct EmojiStreamParameters {
+    starting_page_number: u16,
+    num_emojis_per_page: u8,
+    limit_num_pages: Option<u16>,
+}
+
+impl Default for EmojiStreamParameters {
+    fn default() -> Self {
+        Self {
+            starting_page_number: DEFAULT_STARTING_PAGE,
+            num_emojis_per_page: DEFAULT_NUM_EMOJIS_PER_PAGE,
+            limit_num_pages: None,
+        }
+    }
+}
+
+impl EmojiStreamParameters {
+    pub fn new(
+        starting_page_number: u16,
+        num_emojis_per_page: u8,
+        limit_num_pages: Option<u16>,
+    ) -> Self {
+        Self {
+            starting_page_number,
+            num_emojis_per_page,
+            limit_num_pages,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum EmojiExistenceKind {
     Exists,
@@ -100,7 +133,7 @@ impl EmojiCollection {
     pub async fn from_new_emoji_stream(client: Rc<SlackClient>) -> Self {
         let mut collection = Self::new();
 
-        let stream = new_emoji_stream(client.clone());
+        let stream = new_emoji_stream(client.clone(), None);
         pin_mut!(stream);
 
         while let Some(Ok(emoji)) = stream.next().await {
@@ -113,24 +146,34 @@ impl EmojiCollection {
 
 pub fn new_emoji_stream(
     slack_client: Rc<SlackClient>,
+    stream_parameters: Option<EmojiStreamParameters>,
 ) -> impl Stream<Item = Result<Emoji, Box<dyn Error>>> {
     try_stream! {
-        let mut curr_page: u16 = 1;
-        let mut known_num_pages: Option<u16> = None;
+        let parameters = stream_parameters.unwrap_or_default();
+        let mut current_page_number = parameters.starting_page_number;
+        let mut available_pages_count: Option<u16> = None;
+        let mut pages_fetched: u16 = 0;
         loop {
-            if let Some(num_pages) = known_num_pages {
-                if curr_page > num_pages {
+            if let Some(available_pages_count) = available_pages_count {
+                if current_page_number > available_pages_count {
                     break;
                 }
             }
-            let (emojis, num_pages) = slack_client.fetch_custom_emoji_page(curr_page).await?;
-            if known_num_pages.is_none() {
-                known_num_pages = Some(num_pages);
+            if let Some(limit_num_pages) = parameters.limit_num_pages {
+                if pages_fetched >= limit_num_pages {
+                    break;
+                }
+            }
+
+            let (emojis, num_pages) = slack_client.fetch_custom_emoji_page(current_page_number, parameters.num_emojis_per_page).await?;
+            if available_pages_count.is_none() {
+                available_pages_count = Some(num_pages);
             }
             for emoji in emojis {
                 yield emoji;
             }
-            curr_page += 1;
+            current_page_number += 1;
+            pages_fetched += 1;
         }
     }
 }

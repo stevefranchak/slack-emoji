@@ -19,7 +19,8 @@ struct EmojiInfo {
 lazy_static! {
     // The current max emoji standard version supported by Slack (not sure if there's a delay before Slack
     // adopts a newer version anymore; doing this for now just to play it safe)
-    static ref MAX_SUPPORTED_EMOJI_VERSION: Version<'static> = Version::from("13.0").unwrap();
+    // See: https://emojipedia.org/emoji-14.0/, https://emojipedia.org/slack/
+    static ref MAX_SUPPORTED_EMOJI_VERSION: Version<'static> = Version::from("14.0").unwrap();
 }
 
 // Slack's /api/emoji.getInfo endpoint returns the "emoji_not_found" error for short codes belonging to standard

@@ -8,23 +8,24 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-stream = "0.3.2"
+async-stream = "0.3.3"
 chrono = { version = "0.4.19", features = ["serde"] }
-clap = { version = "3.1.2", features = ["derive", "env"] }
+clap = { version = "4.1.8", features = ["derive", "env"] }
 colored = "2.0.0"
-env_logger = "0.9.0"
+env_logger = "0.10.0"
 futures = "0.3.21"
 log = "0.4.14"
-phf = "0.10.1"
-reqwest = { version = "0.11.9", features = ["json", "multipart", "stream"] }
+phf = "0.11.1"
+reqwest = { version = "0.11.14", features = ["json", "multipart", "stream"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 tokio = { version = "1.17.0", features = ["full"] }
+urlencoding = "2.1.2"
 
 [build-dependencies]
 lazy_static = "1.4.0"
 minreq = { version = "2.6.0", features = ["https", "json-using-serde"] }
-phf_codegen = "0.10.0"
+phf_codegen = "0.11.1"
 serde = { version = "1.0.136", features = ["derive"] }
 # The semver crate requires that a version has at least three octets, and I'm not about that life
 version-compare = "0.1.0"

@@ -7,20 +7,21 @@ use futures::stream::StreamExt;
 use log::{error, info, trace, warn};
 
 use crate::archive::{EmojiDirectory, EmojiFile};
-use crate::emoji::{new_emoji_stream, EmojiCollection, EmojiExistenceKind};
+use crate::emoji::{new_emoji_stream, EmojiCollection, EmojiExistenceKind, EmojiStreamParameters};
 use crate::slack::SlackClient;
 
 // See build.rs
 include!(concat!(env!("OUT_DIR"), "/emoji_standard_shortcodes.rs"));
 
-pub async fn download<T: AsRef<str>>(
+pub async fn download(
     client: Rc<SlackClient>,
-    target_directory: T,
+    target_directory: &str,
+    stream_parameters: EmojiStreamParameters,
 ) -> Result<(), Box<dyn Error>> {
-    let stream = new_emoji_stream(client.clone());
+    let stream = new_emoji_stream(client.clone(), Some(stream_parameters));
     pin_mut!(stream);
 
-    let emoji_directory = EmojiDirectory::new(target_directory.as_ref());
+    let emoji_directory = EmojiDirectory::new(target_directory);
     emoji_directory.ensure_exists().await;
     let mut metadata_file = emoji_directory.open_metadata_file().await?;
     let metadata_emoji_name_set = metadata_file.get_emoji_name_set().await?;
@@ -36,7 +37,7 @@ pub async fn download<T: AsRef<str>>(
                     metadata_file.record_emoji(&emoji_file).await?;
                     info!("Downloaded emoji: {:?}", emoji_file);
                 } else {
-                    trace!("Emoji is already downloaded, skipping: {:?}", emoji_file);
+                    trace!("Emoji is already downloaded; skipping: {:?}", emoji_file);
                 }
             }
             Err(e) => error!("Failed to fetch emoji list or parse response: {}", e),
@@ -46,17 +47,13 @@ pub async fn download<T: AsRef<str>>(
     Ok(())
 }
 
-pub async fn upload<T: AsRef<str>>(
-    client: Rc<SlackClient>,
-    target_directory: T,
-) -> Result<(), Box<dyn Error>> {
-    let emoji_directory = EmojiDirectory::new(target_directory.as_ref());
+pub async fn upload(client: Rc<SlackClient>, target_directory: &str) -> Result<(), Box<dyn Error>> {
+    let emoji_directory = EmojiDirectory::new(target_directory);
     match emoji_directory.exists().await {
-        Ok(false) => panic!("\"{}\" is not a directory", target_directory.as_ref()),
+        Ok(false) => panic!("\"{}\" is not a directory", target_directory),
         Err(e) => panic!(
             "Failed to check existence of directory \"{}\": {}",
-            target_directory.as_ref(),
-            e
+            target_directory, e
         ),
         _ => (),
     };
@@ -73,7 +70,7 @@ pub async fn upload<T: AsRef<str>>(
         if EMOJI_STANDARD_SHORTCODES.contains::<str>(&emoji_file.emoji.name) {
             warn!(
                 "{}: {}",
-                "Cannot upload emoji due to conflicting Slack short code name (Unicode emoji standard)"
+                "Cannot upload emoji due to conflicting Slack short code name (Unicode emoji standard); skipping"
                     .bright_red(),
                 emoji_file.emoji.name.yellow()
             );
@@ -130,6 +127,6 @@ mod tests {
     fn test_emoji_standard_shortcodes() {
         assert!(EMOJI_STANDARD_SHORTCODES.contains::<str>("seal"));
         assert!(EMOJI_STANDARD_SHORTCODES.contains::<str>("female_elf"));
-        assert!(!EMOJI_STANDARD_SHORTCODES.contains::<str>("bogogogogogo"));
+        assert!(!EMOJI_STANDARD_SHORTCODES.contains::<str>("rubbing_hands"));
     }
 }

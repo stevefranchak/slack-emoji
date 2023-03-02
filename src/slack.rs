@@ -4,22 +4,39 @@ use std::time::Duration;
 
 use futures::stream::StreamExt;
 use log::{info, trace};
+use reqwest::header::HeaderValue;
 use reqwest::{
+    header::COOKIE,
     multipart::{Form, Part},
-    Client,
+    Client, RequestBuilder,
 };
 use serde::Deserialize;
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 use tokio::time::sleep;
+use urlencoding::encode;
 
 use crate::archive::EmojiFile;
 use crate::emoji::Emoji;
+
+trait RequestBuilderExt {
+    fn add_slack_session_cookie(self, session_cookie: &str) -> Self;
+}
+
+impl RequestBuilderExt for RequestBuilder {
+    fn add_slack_session_cookie(self, session_cookie: &str) -> Self {
+        self.header(
+            COOKIE,
+            HeaderValue::try_from(format!("d={}", session_cookie)).unwrap(),
+        )
+    }
+}
 
 #[derive(Debug)]
 pub struct SlackClient {
     pub client: Client,
     pub token: String,
+    pub session_cookie: String,
     pub base_url: String,
 }
 
@@ -34,58 +51,67 @@ struct PagingInfo {
 }
 
 #[derive(Debug, Deserialize)]
-struct EmojiResponse {
-    #[serde(rename = "emoji")]
-    emojis: Vec<Emoji>,
-    paging: PagingInfo,
+#[serde(untagged)]
+enum FetchCustomEmojiPageResponseKind {
+    EmojiResponse {
+        #[serde(rename = "emoji")]
+        emojis: Vec<Emoji>,
+        paging: PagingInfo,
+    },
+    ErrorResponse {
+        error: String,
+    },
 }
 
 impl SlackClient {
-    pub fn new<S: Into<String>, T: AsRef<str>>(token: S, workspace: T) -> Self {
+    pub fn new<S: Into<String>, T: AsRef<str>>(token: S, session_cookie: S, workspace: T) -> Self {
         Self {
             client: Client::new(),
             token: token.into(),
+            session_cookie: encode(session_cookie.into().as_str()).into(),
             base_url: format!("https://{}.slack.com/api", workspace.as_ref()),
         }
     }
 
-    pub fn generate_url<T: AsRef<str>>(&self, endpoint: T) -> String {
-        format!("{}/{}", self.base_url, endpoint.as_ref())
+    pub fn generate_url(&self, endpoint: &str) -> String {
+        format!("{}/{}", self.base_url, endpoint)
     }
 
     // TODO - add retry logic if rate limited
     pub async fn fetch_custom_emoji_page(
         &self,
         curr_page: u16,
+        num_emojis_per_page: u8,
     ) -> Result<(Vec<Emoji>, u16), Box<dyn Error>> {
-        let response: EmojiResponse = self
+        let response: FetchCustomEmojiPageResponseKind = self
             .client
             .post(&self.generate_url("emoji.adminList"))
             .form(&[
                 ("token", &self.token),
-                ("count", &"100".into()),
+                ("count", &num_emojis_per_page.to_string()),
                 ("page", &curr_page.to_string()),
             ])
+            .add_slack_session_cookie(&self.session_cookie)
             .send()
             .await?
             .json()
             .await?;
 
-        Ok((response.emojis, response.paging.pages))
+        match response {
+            FetchCustomEmojiPageResponseKind::EmojiResponse { emojis, paging } => {
+                Ok((emojis, paging.pages))
+            }
+            FetchCustomEmojiPageResponseKind::ErrorResponse { error } => Err(error.into()),
+        }
     }
 
-    pub async fn download<P: AsRef<Path>, T: AsRef<str>>(
+    pub async fn download<P: AsRef<Path>>(
         &self,
-        download_url: T,
+        download_url: &str,
         path: P,
     ) -> Result<(), Box<dyn Error>> {
         let mut emoji_file = File::create(path).await?;
-        let mut stream = self
-            .client
-            .get(download_url.as_ref())
-            .send()
-            .await?
-            .bytes_stream();
+        let mut stream = self.client.get(download_url).send().await?.bytes_stream();
 
         while let Some(Ok(chunk)) = stream.next().await {
             emoji_file.write_all(&chunk).await?;
@@ -104,16 +130,16 @@ impl SlackClient {
         let result = loop {
             // form needs to be recreated on each iteration of the loop since RequestBuilder moves it
             let form = Form::new()
-                .part("mode", Part::text("data"))
+                .text("mode", "data")
                 // clones are needed here because the values passed to reqwest::multipart::Part's text and file_name methods
                 // are bound by Into<Cow<'static, str>>, so any references passed in would need to have a 'static lifetime.
-                .part("name", Part::text(emoji_file.emoji.name.clone()))
+                .text("name", emoji_file.emoji.name.clone())
                 .part(
                     "image",
                     Part::bytes(fs::read(emoji_filepath.clone()).await?)
                         .file_name(emoji_file.filename.clone()),
                 )
-                .part("token", Part::text(self.token.clone()));
+                .text("token", self.token.clone());
 
             let response = self
                 .client
@@ -165,21 +191,17 @@ impl SlackClient {
         }
     }
 
-    pub async fn add_alias<T: AsRef<str>>(
-        &self,
-        name: T,
-        alias_for: T,
-    ) -> Result<(), Box<dyn Error>> {
+    pub async fn add_alias(&self, name: &str, alias_for: &str) -> Result<(), Box<dyn Error>> {
         let mut try_count: u8 = 0;
         let result = loop {
             // form needs to be recreated on each iteration of the loop since RequestBuilder moves it
             let form = Form::new()
-                .part("mode", Part::text("alias"))
+                .text("mode", "alias")
                 // clones are needed here because the values passed to reqwest::multipart::Part's text and file_name methods
                 // are bound by Into<Cow<'static, str>>, so any references passed in would need to have a 'static lifetime.
-                .part("name", Part::text(name.as_ref().to_string()))
-                .part("alias_for", Part::text(alias_for.as_ref().to_string()))
-                .part("token", Part::text(self.token.clone()));
+                .text("name", name.to_string())
+                .text("alias_for", alias_for.to_string())
+                .text("token", self.token.clone());
 
             let response = self
                 .client
@@ -192,9 +214,8 @@ impl SlackClient {
             if let Some(wait_time_s) = response.headers().get("retry-after") {
                 if try_count == 3 {
                     break Err(format!(
-                        "Could not successfully add alias '{}' for '{}' within 3 tries, skipping",
-                        name.as_ref(),
-                        alias_for.as_ref()
+                        "Could not successfully add alias '{}' for '{}' within 3 tries; skipping",
+                        name, alias_for
                     ));
                 };
                 try_count += 1;
@@ -202,7 +223,7 @@ impl SlackClient {
                 let wait_time_s: u64 = wait_time_s.to_str()?.parse()?;
                 trace!(
                     "Hit rate-limit on emoji.add for adding alias '{}' for '{}'; retrying in {} seconds",
-                    name.as_ref(), alias_for.as_ref(),
+                    name, alias_for,
                     wait_time_s
                 );
                 sleep(Duration::from_secs(wait_time_s)).await;
@@ -220,17 +241,11 @@ impl SlackClient {
                 if let Some(error_msg) = response.error {
                     Err(format!(
                         "Failed to add alias '{}' for '{}' for reason: {}",
-                        name.as_ref(),
-                        alias_for.as_ref(),
-                        error_msg
+                        name, alias_for, error_msg
                     )
                     .into())
                 } else {
-                    info!(
-                        "Added alias '{}' for '{}'",
-                        name.as_ref(),
-                        alias_for.as_ref()
-                    );
+                    info!("Added alias '{}' for '{}'", name, alias_for);
                     Ok(())
                 }
             }
