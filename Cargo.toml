@@ -5,8 +5,6 @@ authors = ["Steve Franchak <stevefranchak@gmail.com>"]
 description = "CLI tool for downloading emojis from or uploading emojis to a Slack workspace."
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 async-stream = "0.3.3"
 chrono = { version = "0.4.19", features = ["serde"] }
@@ -16,7 +14,8 @@ env_logger = "0.10.0"
 futures = "0.3.21"
 log = "0.4.14"
 phf = "0.11.1"
-reqwest = { version = "0.11.14", features = ["json", "multipart", "stream"] }
+# https://github.com/sfackler/rust-openssl/issues/1448#issuecomment-1159102087
+reqwest = { version = "0.11.14", features = ["json", "multipart", "stream", "rustls-tls-native-roots"] }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.79"
 tokio = { version = "1.17.0", features = ["full"] }
