@@ -19,7 +19,7 @@ jobs:
         with:
           toolchain: nightly
           override: true
-          components: rustfmt, clippy
+          components: clippy
       - uses: actions/setup-python@v2
       - name: Double-check nothing got through pre-commit
         uses: pre-commit/action@v2.0.0
