@@ -145,6 +145,7 @@ impl SlackClient {
                 .client
                 .post(&self.generate_url("emoji.add"))
                 .multipart(form)
+                .add_slack_session_cookie(&self.session_cookie)
                 .send()
                 .await?;
 
@@ -207,6 +208,7 @@ impl SlackClient {
                 .client
                 .post(&self.generate_url("emoji.add"))
                 .multipart(form)
+                .add_slack_session_cookie(&self.session_cookie)
                 .send()
                 .await?;
 
